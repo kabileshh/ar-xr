@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Planetary System Demo</title>
+  <title>AR Planetary System with Hit Test</title>
   <style>
     body { margin: 0; overflow: hidden; }
+    button { position: absolute; top: 20px; left: 20px; padding: 12px 20px; background: #0078d7; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; z-index: 1; }
   </style>
 </head>
 <body>
@@ -16,6 +17,11 @@
   let camera, scene, renderer;
   let planets = [];
   let sun;
+  let controller;
+  let reticle;
+  let hitTestSource = null;
+  let hitTestSourceRequested = false;
+  let placed = false; // if the solar system is placed
 
   // Planet data: name, size(radius), distance from sun, rotation speed, orbit speed
   const planetData = [
@@ -33,13 +39,36 @@
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // AR Button
     document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
 
+    // Reticle to visualize hit-test position
+    const ringGeometry = new THREE.RingGeometry(0.1, 0.11, 32).rotateX(- Math.PI / 2);
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    reticle = new THREE.Mesh(ringGeometry, ringMaterial);
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    // Controller to handle tap input
+    controller = renderer.xr.getController(0);
+    controller.addEventListener('select', onSelect);
+    scene.add(controller);
+
+    // Light
+    const light = new THREE.PointLight(0xffffff, 1, 10);
+    scene.add(light);
+
+    renderer.setAnimationLoop(animate);
+  }
+
+  function createSolarSystem(position) {
+    sun = null;
+    planets = [];
     // Sun
     const sunGeom = new THREE.SphereGeometry(0.15, 32, 32);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     sun = new THREE.Mesh(sunGeom, sunMat);
+    sun.position.copy(position);
     scene.add(sun);
 
     // Planets
@@ -51,37 +80,74 @@
         distance: data.distance,
         rotationSpeed: data.rotationSpeed,
         orbitSpeed: data.orbitSpeed,
-        angle: Math.random() * Math.PI * 2 // random start orbit angle
+        angle: Math.random() * Math.PI * 2
       };
       scene.add(planet);
       planets.push(planet);
     });
 
-    // Light
-    const light = new THREE.PointLight(0xffffff, 1, 10);
-    light.position.set(0, 0, 0);
-    scene.add(light);
-
-    renderer.setAnimationLoop(animate);
+    // Light position at sun
+    scene.children.forEach(obj => {
+      if (obj.isPointLight) obj.position.copy(position);
+    });
   }
 
-  function animate() {
-    // Rotate sun
-    sun.rotation.y += 0.01;
+  function onSelect() {
+    if (reticle.visible && !placed) {
+      createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
+      placed = true;
+      reticle.visible = false;
+    }
+  }
 
-    // Update planets rotation and orbit
-    planets.forEach(planet => {
-      // Rotate on axis
-      planet.rotation.y += planet.userData.rotationSpeed;
+  function animate(timestamp, frame) {
+    if (frame) {
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      const session = renderer.xr.getSession();
 
-      // Orbit around sun
-      planet.userData.angle += planet.userData.orbitSpeed;
-      planet.position.set(
-        Math.cos(planet.userData.angle) * planet.userData.distance,
-        0,
-        Math.sin(planet.userData.angle) * planet.userData.distance
-      );
-    });
+      if (!hitTestSourceRequested) {
+        session.requestReferenceSpace('viewer').then((referenceSpace) => {
+          session.requestHitTestSource({ space: referenceSpace }).then((source) => {
+            hitTestSource = source;
+          });
+        });
+
+        session.addEventListener('end', () => {
+          hitTestSourceRequested = false;
+          hitTestSource = null;
+        });
+
+        hitTestSourceRequested = true;
+      }
+
+      if (hitTestSource) {
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        if (hitTestResults.length > 0 && !placed) {
+          const hit = hitTestResults[0];
+          const pose = hit.getPose(referenceSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+        } else {
+          reticle.visible = false;
+        }
+      }
+    }
+
+    if (placed && sun) {
+      // Rotate sun
+      sun.rotation.y += 0.01;
+
+      // Update planets rotation and orbit around the sun position
+      planets.forEach(planet => {
+        planet.rotation.y += planet.userData.rotationSpeed;
+        planet.userData.angle += planet.userData.orbitSpeed;
+        planet.position.set(
+          sun.position.x + Math.cos(planet.userData.angle) * planet.userData.distance,
+          sun.position.y,
+          sun.position.z + Math.sin(planet.userData.angle) * planet.userData.distance
+        );
+      });
+    }
 
     renderer.render(scene, camera);
   }
