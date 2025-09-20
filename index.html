@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Planetary System with Hit Test</title>
+  <title>AR Planetary System with Info Tap</title>
   <style>
     body { margin: 0; overflow: hidden; }
-    button { position: absolute; top: 20px; left: 20px; padding: 12px 20px; background: #0078d7; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; z-index: 1; }
   </style>
 </head>
 <body>
@@ -21,9 +20,12 @@
   let reticle;
   let hitTestSource = null;
   let hitTestSourceRequested = false;
-  let placed = false; // if the solar system is placed
+  let placed = false;
 
-  // Planet data: name, size(radius), distance from sun, rotation speed, orbit speed
+  // Raycaster and tap position for tap detection
+  const raycaster = new THREE.Raycaster();
+  const tapPosition = new THREE.Vector2();
+
   const planetData = [
     { name: "Mercury", size: 0.03, distance: 0.4, rotationSpeed: 0.01, orbitSpeed: 0.02 },
     { name: "Venus",   size: 0.06, distance: 0.7, rotationSpeed: 0.008, orbitSpeed: 0.015 },
@@ -41,7 +43,6 @@
 
     document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
 
-    // Reticle to visualize hit-test position
     const ringGeometry = new THREE.RingGeometry(0.1, 0.11, 32).rotateX(- Math.PI / 2);
     const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
     reticle = new THREE.Mesh(ringGeometry, ringMaterial);
@@ -49,12 +50,13 @@
     reticle.visible = false;
     scene.add(reticle);
 
-    // Controller to handle tap input
     controller = renderer.xr.getController(0);
     controller.addEventListener('select', onSelect);
     scene.add(controller);
 
-    // Light
+    // Add event listener for tap detection
+    renderer.domElement.addEventListener('click', onClick, false);
+
     const light = new THREE.PointLight(0xffffff, 1, 10);
     scene.add(light);
 
@@ -64,19 +66,19 @@
   function createSolarSystem(position) {
     sun = null;
     planets = [];
-    // Sun
+
     const sunGeom = new THREE.SphereGeometry(0.15, 32, 32);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     sun = new THREE.Mesh(sunGeom, sunMat);
     sun.position.copy(position);
     scene.add(sun);
 
-    // Planets
     planetData.forEach(data => {
       const geom = new THREE.SphereGeometry(data.size, 32, 32);
       const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
       const planet = new THREE.Mesh(geom, mat);
       planet.userData = {
+        name: data.name,
         distance: data.distance,
         rotationSpeed: data.rotationSpeed,
         orbitSpeed: data.orbitSpeed,
@@ -86,7 +88,6 @@
       planets.push(planet);
     });
 
-    // Light position at sun
     scene.children.forEach(obj => {
       if (obj.isPointLight) obj.position.copy(position);
     });
@@ -97,6 +98,20 @@
       createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
       placed = true;
       reticle.visible = false;
+    }
+  }
+
+  function onClick(event) {
+    tapPosition.x = (event.clientX / window.innerWidth) * 2 - 1;
+    tapPosition.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(tapPosition, camera);
+
+    const intersects = raycaster.intersectObjects(planets);
+
+    if (intersects.length > 0) {
+      const planet = intersects[0].object;
+      alert('You clicked on ' + planet.userData.name);
     }
   }
 
@@ -134,10 +149,7 @@
     }
 
     if (placed && sun) {
-      // Rotate sun
       sun.rotation.y += 0.01;
-
-      // Update planets rotation and orbit around the sun position
       planets.forEach(planet => {
         planet.rotation.y += planet.userData.rotationSpeed;
         planet.userData.angle += planet.userData.orbitSpeed;
