@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Planetary System with Info Tap</title>
+  <title>AR Planetary System with Controller Tap</title>
   <style>
     body { margin: 0; overflow: hidden; }
   </style>
@@ -22,9 +22,7 @@
   let hitTestSourceRequested = false;
   let placed = false;
 
-  // Raycaster and tap position for tap detection
   const raycaster = new THREE.Raycaster();
-  const tapPosition = new THREE.Vector2();
 
   const planetData = [
     { name: "Mercury", size: 0.03, distance: 0.4, rotationSpeed: 0.01, orbitSpeed: 0.02 },
@@ -51,11 +49,29 @@
     scene.add(reticle);
 
     controller = renderer.xr.getController(0);
-    controller.addEventListener('select', onSelect);
-    scene.add(controller);
 
-    // Add event listener for tap detection
-    renderer.domElement.addEventListener('click', onClick, false);
+    // Listen for controller select event for tap
+    controller.addEventListener('select', () => {
+      if (!placed && reticle.visible) {
+        createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
+        placed = true;
+        reticle.visible = false;
+        return;
+      }
+      // Raycast from controller for planet selection
+      const tempMatrix = new THREE.Matrix4();
+      tempMatrix.identity().extractRotation(controller.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+      const intersects = raycaster.intersectObjects(planets);
+      if (intersects.length > 0) {
+        const planet = intersects[0].object;
+        alert('You selected ' + planet.userData.name);
+      }
+    });
+
+    scene.add(controller);
 
     const light = new THREE.PointLight(0xffffff, 1, 10);
     scene.add(light);
@@ -73,7 +89,7 @@
     sun.position.copy(position);
     scene.add(sun);
 
-    planetData.forEach(data => {
+    planetData.forEach((data, index) => {
       const geom = new THREE.SphereGeometry(data.size, 32, 32);
       const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
       const planet = new THREE.Mesh(geom, mat);
@@ -82,7 +98,7 @@
         distance: data.distance,
         rotationSpeed: data.rotationSpeed,
         orbitSpeed: data.orbitSpeed,
-        angle: Math.random() * Math.PI * 2
+        angle: (index / planetData.length) * Math.PI * 2
       };
       scene.add(planet);
       planets.push(planet);
@@ -91,28 +107,6 @@
     scene.children.forEach(obj => {
       if (obj.isPointLight) obj.position.copy(position);
     });
-  }
-
-  function onSelect() {
-    if (reticle.visible && !placed) {
-      createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
-      placed = true;
-      reticle.visible = false;
-    }
-  }
-
-  function onClick(event) {
-    tapPosition.x = (event.clientX / window.innerWidth) * 2 - 1;
-    tapPosition.y = - (event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(tapPosition, camera);
-
-    const intersects = raycaster.intersectObjects(planets);
-
-    if (intersects.length > 0) {
-      const planet = intersects[0].object;
-      alert('You clicked on ' + planet.userData.name);
-    }
   }
 
   function animate(timestamp, frame) {
