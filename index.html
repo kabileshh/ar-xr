@@ -3,10 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Planetary System with Controller Tap</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-  </style>
+  <title>AR Planetary System with 3D Info Panel</title>
+  <style> body { margin: 0; overflow: hidden; } </style>
 </head>
 <body>
 <script type="module">
@@ -21,6 +19,7 @@
   let hitTestSource = null;
   let hitTestSourceRequested = false;
   let placed = false;
+  let infoPanel = null;
 
   const raycaster = new THREE.Raycaster();
 
@@ -50,7 +49,6 @@
 
     controller = renderer.xr.getController(0);
 
-    // Listen for controller select event for tap
     controller.addEventListener('select', () => {
       if (!placed && reticle.visible) {
         createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
@@ -58,7 +56,7 @@
         reticle.visible = false;
         return;
       }
-      // Raycast from controller for planet selection
+
       const tempMatrix = new THREE.Matrix4();
       tempMatrix.identity().extractRotation(controller.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
@@ -67,7 +65,9 @@
       const intersects = raycaster.intersectObjects(planets);
       if (intersects.length > 0) {
         const planet = intersects[0].object;
-        alert('You selected ' + planet.userData.name);
+        showInfoPanel(planet);
+      } else {
+        hideInfoPanel();
       }
     });
 
@@ -82,6 +82,7 @@
   function createSolarSystem(position) {
     sun = null;
     planets = [];
+    hideInfoPanel();
 
     const sunGeom = new THREE.SphereGeometry(0.15, 32, 32);
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
@@ -107,6 +108,45 @@
     scene.children.forEach(obj => {
       if (obj.isPointLight) obj.position.copy(position);
     });
+  }
+
+  function showInfoPanel(planet) {
+    if (infoPanel) {
+      scene.remove(infoPanel);
+      infoPanel.geometry.dispose();
+      infoPanel.material.dispose();
+      infoPanel = null;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const context = canvas.getContext('2d');
+    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.font = '30px Arial';
+    context.fillStyle = 'white';
+    context.fillText(planet.userData.name, 10, 50);
+    context.fillText('A planet of the solar system.', 10, 100);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    infoPanel = new THREE.Sprite(material);
+
+    infoPanel.position.copy(planet.position);
+    infoPanel.position.y += 0.1; // Slightly above planet
+    infoPanel.scale.set(0.5, 0.25, 1);
+
+    scene.add(infoPanel);
+  }
+
+  function hideInfoPanel() {
+    if (infoPanel) {
+      scene.remove(infoPanel);
+      infoPanel.geometry.dispose();
+      infoPanel.material.dispose();
+      infoPanel = null;
+    }
   }
 
   function animate(timestamp, frame) {
