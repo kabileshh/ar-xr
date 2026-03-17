@@ -133,6 +133,7 @@ camera.set(cv2.CAP_PROP_FPS, 30)
 feed_lock = threading.Lock()
 data_lock = threading.Lock()
 live_frame_bytes = None
+image_mode = False  # when True, camera loop wont overwrite stats
 
 stats = {
     "isolated_b64":    None,
@@ -157,6 +158,9 @@ stats = {
     "session_start":   datetime.datetime.now().strftime("%H:%M:%S"),
     "last_updated":    "--",
 }
+
+# Flag to pause camera overwriting stats during image upload
+image_mode = False
 
 # ─── rembg Queue ─────────────────────────────────────────────────────────────
 import queue
@@ -343,22 +347,27 @@ def camera_loop():
             latest_verdict = rembg_result.get("verdict", "PENDING")
 
         with data_lock:
-            stats["part_name"]      = part_name
-            stats["part_class"]     = part_class
-            stats["part_type"]      = part_type
-            stats["part_material"]  = part_material
-            stats["part_standard"]  = part_standard
-            stats["part_usecase"]   = part_usecase
-            stats["confidence"]     = confidence
-            stats["bbox_wh"]        = bbox_wh
-            stats["detected"]       = detected
-            stats["fps"]            = current_fps
-            stats["last_updated"]   = datetime.datetime.now().strftime("%H:%M:%S")
-            stats["isolated_b64"]   = latest_iso
-            stats["heatmap_b64"]    = latest_hmap
-            stats["defect_zones"]   = latest_zones
-            stats["quality_score"]  = latest_quality
-            stats["verdict"]        = latest_verdict
+            # Only update stats from camera if not in image upload mode
+            if not image_mode:
+                stats["part_name"]      = part_name
+                stats["part_class"]     = part_class
+                stats["part_type"]      = part_type
+                stats["part_material"]  = part_material
+                stats["part_standard"]  = part_standard
+                stats["part_usecase"]   = part_usecase
+                stats["confidence"]     = confidence
+                stats["bbox_wh"]        = bbox_wh
+                stats["detected"]       = detected
+                stats["fps"]            = current_fps
+                stats["last_updated"]   = datetime.datetime.now().strftime("%H:%M:%S")
+                stats["isolated_b64"]   = latest_iso
+                stats["heatmap_b64"]    = latest_hmap
+                stats["defect_zones"]   = latest_zones
+                stats["quality_score"]  = latest_quality
+                stats["verdict"]        = latest_verdict
+            else:
+                # Still update FPS even in image mode
+                stats["fps"] = current_fps
 
             if do_count:
                 stats["total_scanned"] += 1
@@ -692,9 +701,11 @@ def analyze_image():
         verdict      = "PASS" if quality >= part_info["threshold"] else "FAIL"
 
         # ── Step 4: Update shared stats so PDF export works ──
+        global image_mode
+        image_mode = True  # pause camera overwriting stats
         with data_lock:
             stats["part_name"]     = part_info["name"]
-            stats["part_class"]    = part_type
+            stats["part_class"]    = part_info["name"]
             stats["part_type"]     = part_info["type"]
             stats["part_material"] = part_info["material"]
             stats["part_standard"] = part_info["standard"]
@@ -745,6 +756,18 @@ def analyze_image():
     except Exception as e:
         print(f"[!] Image analysis error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reset_image_mode")
+def reset_image_mode():
+    global image_mode
+    image_mode = False
+    with data_lock:
+        stats["detected"]      = False
+        stats["part_name"]     = "Scanning..."
+        stats["isolated_b64"]  = None
+        stats["heatmap_b64"]   = None
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False, host="0.0.0.0", port=5000)
