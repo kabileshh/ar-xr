@@ -1,177 +1,1060 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Planetary System with Info Tap</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SmartVision AI — Evaluation 1</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
   <style>
-    body { margin: 0; overflow: hidden; }
+    :root {
+      --bg:      #05080c;
+      --surface: #0a0f16;
+      --surf2:   #0d1520;
+      --border:  #152030;
+      --border2: #1e3048;
+      --accent:  #00d4ff;
+      --accent2: #ff6b00;
+      --green:   #00ff88;
+      --red:     #ff3b5c;
+      --purple:  #a855f7;
+      --yellow:  #ffd700;
+      --text:    #c9d8e8;
+      --dim:     #3a5060;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;overflow:hidden;}
+    body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;cursor:crosshair;}
+
+    #particle-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;}
+    .grid-overlay{position:fixed;inset:0;z-index:1;pointer-events:none;
+      background-image:linear-gradient(rgba(0,212,255,0.022) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.022) 1px,transparent 1px);
+      background-size:48px 48px;}
+    .scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;
+      background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,0.07) 3px,rgba(0,0,0,0.07) 4px);}
+
+    /* ── TOPBAR ── */
+    .topbar{position:fixed;top:0;left:0;right:0;z-index:100;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:10px 24px;background:rgba(5,8,12,0.94);backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--border2);}
+    .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,var(--accent),var(--purple),transparent);}
+    .brand{display:flex;align-items:center;gap:12px;}
+    .brand-icon{width:38px;height:38px;position:relative;display:grid;place-items:center;}
+    .brand-icon svg{width:20px;height:20px;filter:drop-shadow(0 0 6px var(--accent));animation:eyePulse 3s ease-in-out infinite;}
+    @keyframes eyePulse{0%,100%{filter:drop-shadow(0 0 5px var(--accent));}50%{filter:drop-shadow(0 0 16px var(--accent));}}
+    .icon-ring{position:absolute;inset:0;border:1.5px solid transparent;border-top-color:var(--accent);border-radius:50%;animation:spinRing 3s linear infinite;}
+    .icon-ring2{position:absolute;inset:5px;border:1px solid transparent;border-bottom-color:var(--accent2);border-radius:50%;animation:spinRing 2s linear infinite reverse;}
+    @keyframes spinRing{to{transform:rotate(360deg);}}
+    .brand-name{font-family:'Orbitron',monospace;font-size:1.1rem;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:0.1em;}
+    .brand-name span{color:var(--accent);}
+    .brand-sub{font-family:'JetBrains Mono',monospace;font-size:0.53rem;color:var(--dim);letter-spacing:0.28em;text-transform:uppercase;margin-top:2px;}
+    .topbar-right{display:flex;align-items:center;gap:12px;}
+    .sys-clock{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--accent);padding:3px 10px;border:1px solid rgba(0,212,255,0.2);border-radius:4px;}
+    .fps-chip{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--dim);padding:3px 10px;border:1px solid var(--border);border-radius:4px;}
+    .fps-chip span{color:var(--accent);font-weight:700;}
+    .live-badge{display:flex;align-items:center;gap:7px;padding:4px 12px;border:1px solid rgba(0,255,136,0.35);border-radius:4px;background:rgba(0,255,136,0.06);font-family:'JetBrains Mono',monospace;font-size:0.63rem;color:var(--green);letter-spacing:0.18em;}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:livePulse 1.4s ease-in-out infinite;}
+    @keyframes livePulse{0%,100%{transform:scale(1);}50%{transform:scale(1.6);opacity:0.4;}}
+
+    /* ── SCAN MODE ── */
+    #mode-scan{position:fixed;inset:0;z-index:10;padding:68px 18px 44px;
+      display:grid;grid-template-columns:1fr 320px;gap:14px;
+      transition:opacity 0.5s ease,transform 0.5s ease;}
+    #mode-scan.hiding{opacity:0;transform:scale(0.96);pointer-events:none;}
+    .left-col{display:flex;flex-direction:column;gap:12px;}
+    .right-col{display:flex;flex-direction:column;gap:12px;}
+
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative;}
+    .card-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.3);}
+    .card-title{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:7px;}
+    .ctbar{width:3px;height:12px;background:linear-gradient(to bottom,var(--accent),var(--purple));border-radius:2px;}
+
+    /* Feed */
+    .feed-wrapper{position:relative;background:#000;line-height:0;}
+    .feed-wrapper img{width:100%;display:block;min-height:180px;object-fit:cover;}
+    .scan-line{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,rgba(0,212,255,0.9),transparent);filter:blur(1px);animation:scanDown 2.5s ease-in-out infinite;pointer-events:none;z-index:5;}
+    @keyframes scanDown{0%{top:0%;opacity:0;}5%{opacity:1;}95%{opacity:1;}100%{top:100%;opacity:0;}}
+    .feed-corner{position:absolute;width:20px;height:20px;border-color:var(--accent);border-style:solid;z-index:6;transition:all 0.4s;}
+    .fc-tl{top:7px;left:7px;border-width:2px 0 0 2px;}.fc-tr{top:7px;right:7px;border-width:2px 2px 0 0;}
+    .fc-bl{bottom:7px;left:7px;border-width:0 0 2px 2px;}.fc-br{bottom:7px;right:7px;border-width:0 2px 2px 0;}
+    .detect-flash{position:absolute;inset:0;pointer-events:none;z-index:4;border:2px solid transparent;opacity:0;transition:opacity 0.15s;}
+    .detect-flash.flash{opacity:1;background:rgba(0,255,136,0.07);border-color:rgba(0,255,136,0.4);}
+    .det-badge{position:absolute;bottom:9px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.18em;padding:4px 14px;border-radius:4px;white-space:nowrap;z-index:7;transition:all 0.4s;}
+    .det-badge.active{background:rgba(0,255,136,0.12);border:1px solid rgba(0,255,136,0.5);color:var(--green);box-shadow:0 0 20px rgba(0,255,136,0.2);}
+    .det-badge.inactive{background:rgba(255,59,92,0.08);border:1px solid rgba(255,59,92,0.3);color:var(--red);}
+
+    /* Stat chips */
+    .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    .stat-chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;position:relative;overflow:hidden;transition:transform 0.25s,border-color 0.3s;}
+    .stat-chip:hover{transform:translateY(-2px);border-color:var(--border2);}
+    .stat-chip::before{content:'';position:absolute;top:0;left:-100%;right:100%;height:2px;background:linear-gradient(90deg,var(--accent),var(--purple));transition:left 0.5s,right 0.5s;}
+    .stat-chip:hover::before{left:0;right:0;}
+    .stat-lbl{font-family:'JetBrains Mono',monospace;font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);margin-bottom:7px;}
+    .stat-val{font-family:'Orbitron',monospace;font-size:1.6rem;font-weight:700;color:var(--accent);line-height:1;}
+    .stat-val.orange{color:var(--accent2);}.stat-val.green{color:var(--green);text-shadow:0 0 18px rgba(0,255,136,0.3);}
+    .stat-unit{font-size:0.56rem;color:var(--dim);margin-top:5px;}
+
+    /* Mini isolated */
+    .isolated-body{padding:12px;display:flex;flex-direction:column;align-items:center;gap:10px;min-height:160px;justify-content:center;}
+    .iso-mini-wrap{width:100%;max-width:240px;aspect-ratio:1;border:1px solid var(--border2);border-radius:8px;background:#050a10;display:grid;place-items:center;overflow:hidden;}
+    .iso-mini-wrap img{width:100%;height:100%;object-fit:contain;}
+    .radar{width:60px;height:60px;border:1px solid rgba(0,212,255,0.2);border-radius:50%;position:relative;display:grid;place-items:center;}
+    .radar::before{content:'';position:absolute;inset:11px;border:1px solid rgba(0,212,255,0.12);border-radius:50%;}
+    .radar-sweep{position:absolute;inset:0;border-radius:50%;overflow:hidden;}
+    .radar-sweep::after{content:'';position:absolute;top:50%;left:50%;width:50%;height:2px;background:linear-gradient(90deg,transparent,var(--accent));transform-origin:left center;animation:radarSpin 2s linear infinite;}
+    @keyframes radarSpin{to{transform:rotate(360deg);}}
+    .radar-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+    .no-part-msg{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--dim);text-align:center;line-height:2;}
+
+    /* Info card */
+    .info-card{padding:14px;}
+    .part-name-sm{font-family:'Orbitron',monospace;font-size:0.9rem;font-weight:700;color:#fff;margin-bottom:4px;}
+    .part-tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:0.56rem;letter-spacing:0.14em;padding:2px 9px;border-radius:4px;background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.2);color:var(--accent);text-transform:uppercase;margin-bottom:10px;}
+    .info-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);}
+    .info-row:last-child{border-bottom:none;}
+    .info-key{font-family:'JetBrains Mono',monospace;font-size:0.57rem;color:var(--dim);letter-spacing:0.12em;text-transform:uppercase;}
+    .info-val{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text);font-weight:700;}
+    .info-val.hi{color:var(--green);}
+    .conf-bar-wrap{margin-top:4px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .conf-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:2px;transition:width 0.6s cubic-bezier(0.16,1,0.3,1);}
+
+    /* ══════════════════════════════════════════
+       RESULT MODE — FULLSCREEN
+    ══════════════════════════════════════════ */
+    #mode-result{position:fixed;inset:0;z-index:50;padding-top:58px;padding-bottom:80px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr auto;gap:14px;padding-left:20px;padding-right:20px;overflow-y:auto;overflow-x:hidden;opacity:0;pointer-events:none;transition:opacity 0.6s ease;}
+    #mode-result.visible{opacity:1;pointer-events:all;}
+
+    /* Row 1: part name + verdict stamp */
+    .result-header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;
+      opacity:0;transform:translateY(-16px);transition:opacity 0.5s ease 0.1s,transform 0.5s ease 0.1s;}
+    #mode-result.visible .result-header{opacity:1;transform:none;}
+
+    .result-part-name{font-family:'Orbitron',monospace;font-size:clamp(1.1rem,2.5vw,1.8rem);font-weight:900;color:#fff;
+      text-shadow:0 0 30px rgba(0,212,255,0.4);letter-spacing:0.08em;}
+    #mode-result.visible .result-part-name{animation:glowPulse 3s ease-in-out infinite;}
+    @keyframes glowPulse{0%,100%{text-shadow:0 0 20px rgba(0,212,255,0.3);}50%{text-shadow:0 0 50px rgba(0,212,255,0.7);}}
+
+    /* PASS/FAIL stamp */
+    .verdict-stamp{
+      font-family:'Orbitron',monospace;font-size:1.6rem;font-weight:900;
+      letter-spacing:0.2em;padding:8px 28px;border-radius:6px;
+      border:3px solid transparent;position:relative;overflow:hidden;
+      transform:scale(0) rotate(-10deg);
+      transition:transform 0.5s cubic-bezier(0.16,1,0.3,1) 0.4s;
+    }
+    #mode-result.visible .verdict-stamp{transform:scale(1) rotate(-2deg);}
+    .verdict-stamp.pass{color:var(--green);border-color:var(--green);background:rgba(0,255,136,0.08);box-shadow:0 0 30px rgba(0,255,136,0.25),inset 0 0 20px rgba(0,255,136,0.05);}
+    .verdict-stamp.fail{color:var(--red);border-color:var(--red);background:rgba(255,59,92,0.08);box-shadow:0 0 30px rgba(255,59,92,0.25),inset 0 0 20px rgba(255,59,92,0.05);}
+    .verdict-stamp.pending{color:var(--yellow);border-color:var(--yellow);background:rgba(255,215,0,0.08);}
+    /* Stamp diagonal stripes */
+    .verdict-stamp::before{content:'';position:absolute;inset:0;
+      background:repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.03) 8px,rgba(255,255,255,0.03) 10px);
+      pointer-events:none;}
+
+    /* Row 2: isolated image | heatmap */
+    .result-img-panel{
+      display:flex;flex-direction:column;gap:10px;
+      opacity:0;transform:translateX(-20px);
+      transition:opacity 0.6s ease 0.2s,transform 0.6s ease 0.2s;
+    }
+    #mode-result.visible .result-img-panel{opacity:1;transform:none;}
+
+    .result-heatmap-panel{
+      display:flex;flex-direction:column;gap:10px;
+      opacity:0;transform:translateX(20px);
+      transition:opacity 0.6s ease 0.25s,transform 0.6s ease 0.25s;
+    }
+    #mode-result.visible .result-heatmap-panel{opacity:1;transform:none;}
+
+    .panel-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:7px;}
+    .plbar{width:3px;height:11px;border-radius:2px;}
+    .plbar.blue{background:linear-gradient(to bottom,var(--accent),var(--purple));}
+    .plbar.orange{background:linear-gradient(to bottom,var(--accent2),var(--red));}
+
+    .img-box{flex:1;border:1px solid var(--border2);border-radius:10px;background:#050a10;
+      overflow:hidden;display:grid;place-items:center;min-height:180px;position:relative;}
+    .img-box img{width:100%;height:100%;object-fit:contain;max-height:260px;}
+
+    /* Rotating rings on isolated image */
+    .img-ring{position:absolute;border-radius:50%;pointer-events:none;}
+    .img-ring.r1{inset:-14px;border:1px solid rgba(0,212,255,0.12);animation:spinRing 12s linear infinite;}
+    .img-ring.r2{inset:-8px;border:1px dashed rgba(168,85,247,0.15);animation:spinRing 8s linear infinite reverse;}
+
+    /* Defect zone counter badge on heatmap */
+    .zone-badge{position:absolute;top:10px;right:10px;
+      font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.12em;
+      padding:3px 10px;border-radius:4px;
+      background:rgba(255,107,0,0.15);border:1px solid rgba(255,107,0,0.4);color:var(--accent2);}
+
+    /* Row 3: gauge + spec card + history */
+    .result-bottom{grid-column:1/-1;display:grid;grid-template-columns:160px 1fr 1fr;gap:14px;
+      opacity:0;transform:translateY(20px);
+      transition:opacity 0.6s ease 0.35s,transform 0.6s ease 0.35s;}
+    #mode-result.visible .result-bottom{opacity:1;transform:none;}
+
+    /* ── QUALITY GAUGE ── */
+    .gauge-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;
+      display:flex;flex-direction:column;align-items:center;gap:10px;}
+    .gauge-title{font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);}
+    .gauge-wrap{position:relative;width:110px;height:110px;}
+    .gauge-svg{width:110px;height:110px;transform:rotate(-90deg);}
+    .gauge-bg{fill:none;stroke:var(--border2);stroke-width:8;}
+    .gauge-fill{fill:none;stroke-width:8;stroke-linecap:round;
+      stroke-dasharray:283;stroke-dashoffset:283;
+      transition:stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1),stroke 0.5s ease;}
+    .gauge-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+    .gauge-num{font-family:'Orbitron',monospace;font-size:1.6rem;font-weight:900;line-height:1;transition:color 0.5s;}
+    .gauge-sub{font-family:'JetBrains Mono',monospace;font-size:0.52rem;color:var(--dim);margin-top:2px;}
+    .gauge-defects{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--dim);text-align:center;}
+    .gauge-defects span{color:var(--accent2);}
+
+    /* ── SPEC CARD ── */
+    .spec-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;}
+    .spec-title{font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+    .spec-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);}
+    .spec-row:last-child{border-bottom:none;}
+    .spec-key{font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--dim);text-transform:uppercase;letter-spacing:0.1em;}
+    .spec-val{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--accent);font-weight:700;}
+
+    /* ── HISTORY LOG ── */
+    .history-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+    .history-header{padding:8px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.3);
+      font-family:'JetBrains Mono',monospace;font-size:0.58rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dim);
+      display:flex;align-items:center;gap:7px;}
+    .history-body{overflow-y:auto;max-height:130px;}
+    .history-row{display:grid;grid-template-columns:60px 1fr 55px 55px 50px;gap:6px;
+      padding:6px 14px;border-bottom:1px solid var(--border);
+      font-family:'JetBrains Mono',monospace;font-size:0.58rem;
+      transition:background 0.2s;animation:histSlide 0.4s ease both;}
+    .history-row:hover{background:rgba(0,212,255,0.04);}
+    @keyframes histSlide{from{opacity:0;transform:translateX(-10px);}to{opacity:1;transform:none;}}
+    .history-row:last-child{border-bottom:none;}
+    .h-time{color:var(--dim);}
+    .h-name{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .h-conf{color:var(--accent);text-align:right;}
+    .h-quality{text-align:right;}
+    .h-verdict{text-align:right;font-weight:700;}
+    .h-verdict.pass{color:var(--green);}
+    .h-verdict.fail{color:var(--red);}
+    .history-empty{padding:20px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--dim);}
+
+    /* ── BACK HINT ── */
+    
+    
+    
+    
+    
+    50%{transform:scale(1.05);}}
+
+
+    /* ── FOOTER ── */
+    .footer{position:fixed;bottom:0;left:0;right:0;z-index:100;text-align:center;padding:7px;
+      font-family:'JetBrains Mono',monospace;font-size:0.53rem;color:var(--dim);
+      letter-spacing:0.2em;text-transform:uppercase;border-top:1px solid var(--border);
+      background:rgba(5,8,12,0.92);backdrop-filter:blur(10px);}
+    .footer span{color:var(--accent);}
+
+    /* Scrollbar */
+    .history-body::-webkit-scrollbar{width:4px;}
+    .history-body::-webkit-scrollbar-track{background:transparent;}
+    .history-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+    @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:none;}}
+
+    /* ══════════════════════════════════════════
+       LOADING SCREEN
+    ══════════════════════════════════════════ */
+    #loader{
+      position:fixed;inset:0;z-index:9999;
+      background:#05080c;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+      transition:opacity 0.8s ease, transform 0.8s ease;
+    }
+    #loader.hiding{opacity:0;transform:scale(1.04);pointer-events:none;}
+    #loader.hidden{display:none;}
+
+    .loader-logo{
+      font-family:'Orbitron',monospace;font-size:clamp(1.6rem,4vw,2.8rem);
+      font-weight:900;color:#fff;letter-spacing:0.12em;text-align:center;
+      margin-bottom:6px;
+    }
+    .loader-logo span{color:#00d4ff;}
+    .loader-sub{
+      font-family:'JetBrains Mono',monospace;font-size:0.65rem;
+      color:#3a5060;letter-spacing:0.3em;text-transform:uppercase;
+      margin-bottom:48px;
+    }
+
+    /* Spinning eye */
+    .loader-eye{
+      width:90px;height:90px;position:relative;
+      display:grid;place-items:center;margin-bottom:36px;
+    }
+    .loader-eye svg{width:40px;height:40px;filter:drop-shadow(0 0 12px #00d4ff);}
+    .le-ring{
+      position:absolute;border-radius:50%;border-style:solid;
+    }
+    .le-r1{inset:0;border-width:2px;border-color:#00d4ff transparent transparent transparent;animation:leR1 1.2s linear infinite;}
+    .le-r2{inset:8px;border-width:1.5px;border-color:transparent #a855f7 transparent transparent;animation:leR1 0.9s linear infinite reverse;}
+    .le-r3{inset:16px;border-width:1px;border-color:#ff6b00 transparent transparent transparent;animation:leR1 1.8s linear infinite;}
+    @keyframes leR1{to{transform:rotate(360deg);}}
+
+    /* Steps */
+    .loader-steps{
+      display:flex;flex-direction:column;align-items:center;gap:10px;
+      margin-bottom:36px;min-height:80px;
+    }
+    .loader-step{
+      font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+      letter-spacing:0.14em;text-transform:uppercase;
+      display:flex;align-items:center;gap:10px;
+      opacity:0;transform:translateX(-12px);
+      transition:opacity 0.4s ease, transform 0.4s ease;
+    }
+    .loader-step.active{opacity:1;transform:none;}
+    .loader-step.done{opacity:0.4;}
+    .step-dot{
+      width:8px;height:8px;border-radius:50%;
+      background:var(--dim);border:1px solid #3a5060;
+      transition:background 0.3s, box-shadow 0.3s;
+      flex-shrink:0;
+    }
+    .loader-step.active .step-dot{
+      background:#00d4ff;box-shadow:0 0 10px #00d4ff;
+      animation:dotPulse 0.8s ease-in-out infinite;
+    }
+    .loader-step.done .step-dot{background:#00ff88;box-shadow:none;}
+    @keyframes dotPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.5);}}
+    .step-text{color:#c9d8e8;}
+    .loader-step.active .step-text{color:#00d4ff;}
+    .loader-step.done .step-text{color:#3a5060;}
+
+    /* Progress bar */
+    .loader-bar-wrap{
+      width:min(340px,80vw);height:3px;
+      background:#152030;border-radius:2px;overflow:hidden;margin-bottom:12px;
+    }
+    .loader-bar{
+      height:100%;width:0%;
+      background:linear-gradient(90deg,#00d4ff,#a855f7,#00ff88);
+      border-radius:2px;
+      transition:width 0.6s cubic-bezier(0.16,1,0.3,1);
+    }
+    .loader-pct{
+      font-family:'JetBrains Mono',monospace;font-size:0.6rem;
+      color:#3a5060;letter-spacing:0.2em;
+    }
+    .loader-pct span{color:#00d4ff;}
+
+    /* Ready flash */
+    .loader-ready{
+      position:absolute;
+      font-family:'Orbitron',monospace;font-size:1.8rem;font-weight:900;
+      color:#00ff88;letter-spacing:0.2em;
+      text-shadow:0 0 40px #00ff88;
+      opacity:0;transform:scale(0.8);
+      transition:opacity 0.4s ease,transform 0.4s ease;
+      pointer-events:none;
+    }
+    .loader-ready.show{opacity:1;transform:scale(1);}
+
+    /* Grid overlay on loader */
+    .loader-grid{
+      position:absolute;inset:0;pointer-events:none;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.018) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(0,212,255,0.018) 1px,transparent 1px);
+      background-size:48px 48px;
+    }
+    /* Scan line on loader */
+    .loader-scanline{
+      position:absolute;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,rgba(0,212,255,0.6),transparent);
+      filter:blur(1px);
+      animation:scanDown 2s ease-in-out infinite;
+      pointer-events:none;
+    }
+
+    /* ── ACTION BAR ── */
+    .action-bar{
+      position:fixed;bottom:0;left:0;right:0;z-index:9000;
+      display:none;align-items:center;justify-content:space-between;
+      padding:10px 24px;gap:12px;
+      background:rgba(5,8,12,0.97);backdrop-filter:blur(20px);
+      border-top:1px solid #1e3048;
+    }
+    .action-bar::before{
+      content:'';position:absolute;top:0;left:0;right:0;height:1px;
+      background:linear-gradient(90deg,transparent,#00d4ff,#a855f7,transparent);
+    }
+    .action-bar.visible{display:flex !important;}
+    .back-btn{
+      font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;
+      padding:9px 22px;border-radius:6px;cursor:pointer;
+      border:1px solid rgba(0,212,255,0.5);
+      background:rgba(0,212,255,0.1);color:#00d4ff;
+      font-weight:700;text-transform:uppercase;transition:all 0.2s;
+    }
+    .back-btn:hover{background:rgba(0,212,255,0.22);transform:translateY(-2px);box-shadow:0 0 18px rgba(0,212,255,0.3);}
+    .action-hint{
+      font-family:'JetBrains Mono',monospace;font-size:0.55rem;
+      color:#3a5060;letter-spacing:0.18em;text-transform:uppercase;
+      flex:1;text-align:center;
+    }
+    .export-btn{
+      font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.15em;
+      padding:9px 22px;border-radius:6px;cursor:pointer;border:none;
+      background:linear-gradient(135deg,#00d4ff,#a855f7);
+      color:#fff;font-weight:700;text-transform:uppercase;
+      box-shadow:0 0 18px rgba(0,212,255,0.3);
+      transition:transform 0.2s,box-shadow 0.2s;
+    }
+    .export-btn:hover{transform:translateY(-2px);box-shadow:0 0 28px rgba(0,212,255,0.5);}
+    .export-btn.exporting{background:linear-gradient(135deg,#00ff88,#00d4ff);}
+    /* Scrollbar for result mode */
+    #mode-result::-webkit-scrollbar{width:5px;}
+    #mode-result::-webkit-scrollbar-track{background:transparent;}
+    #mode-result::-webkit-scrollbar-thumb{background:#1e3048;border-radius:3px;}
+    #mode-result::-webkit-scrollbar-thumb:hover{background:#00d4ff;}
+
+
+    /* ── IMAGE UPLOAD MODE ── */
+    .upload-btn{
+      position:fixed;top:68px;right:20px;z-index:150;
+      font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.15em;
+      padding:7px 16px;border-radius:6px;cursor:pointer;
+      border:1px solid rgba(168,85,247,0.5);
+      background:rgba(168,85,247,0.1);color:var(--purple);
+      font-weight:700;text-transform:uppercase;transition:all 0.2s;
+    }
+    .upload-btn:hover{background:rgba(168,85,247,0.2);box-shadow:0 0 16px rgba(168,85,247,0.3);transform:translateY(-1px);}
+
+    /* Upload modal */
+    .upload-modal{
+      position:fixed;inset:0;z-index:500;
+      display:none;align-items:center;justify-content:center;
+      background:rgba(5,8,12,0.85);backdrop-filter:blur(8px);
+    }
+    .upload-modal.open{display:flex;}
+    .upload-box{
+      background:var(--surface);border:1px solid var(--border2);
+      border-radius:14px;padding:28px;width:min(480px,90vw);
+      position:relative;
+    }
+    .upload-box h3{font-family:'Orbitron',monospace;font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px;}
+    .upload-box p{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--dim);margin-bottom:18px;letter-spacing:0.1em;}
+    .upload-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--dim);font-size:1.2rem;cursor:pointer;padding:4px 8px;}
+    .upload-close:hover{color:#fff;}
+    .part-select{width:100%;background:var(--surf2);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:0.7rem;margin-bottom:14px;cursor:pointer;}
+    .drop-zone{
+      border:2px dashed var(--border2);border-radius:10px;padding:32px;
+      text-align:center;cursor:pointer;transition:all 0.3s;margin-bottom:14px;
+    }
+    .drop-zone:hover,.drop-zone.dragover{border-color:var(--purple);background:rgba(168,85,247,0.06);}
+    .drop-zone-icon{font-size:2.5rem;margin-bottom:10px;}
+    .drop-zone-text{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--dim);letter-spacing:0.1em;}
+    .drop-zone-text span{color:var(--purple);}
+    .drop-zone img{max-width:100%;max-height:180px;border-radius:6px;object-fit:contain;display:none;}
+    .analyze-btn{
+      width:100%;padding:11px;border-radius:6px;border:none;cursor:pointer;
+      background:linear-gradient(135deg,var(--purple),var(--accent));
+      color:#fff;font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+      font-weight:700;letter-spacing:0.15em;text-transform:uppercase;
+      transition:all 0.2s;
+    }
+    .analyze-btn:hover{transform:translateY(-2px);box-shadow:0 0 24px rgba(168,85,247,0.4);}
+    .analyze-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+    .upload-status{font-family:'JetBrains Mono',monospace;font-size:0.65rem;text-align:center;margin-top:10px;min-height:20px;color:var(--dim);}
+
   </style>
 </head>
 <body>
-<script type="module">
-  import * as THREE from 'https://unpkg.com/three@0.150.0/build/three.module.js';
-  import { ARButton } from 'https://unpkg.com/three@0.150.0/examples/jsm/webxr/ARButton.js';
 
-  let camera, scene, renderer;
-  let planets = [];
-  let sun;
-  let controller;
-  let reticle;
-  let hitTestSource = null;
-  let hitTestSourceRequested = false;
-  let placed = false;
 
-  // Raycaster and tap position for tap detection
-  const raycaster = new THREE.Raycaster();
-  const tapPosition = new THREE.Vector2();
+<!-- ══ LOADING SCREEN ══ -->
+<div id="loader">
+  <div class="loader-grid"></div>
+  <div class="loader-scanline"></div>
 
-  const planetData = [
-    { name: "Mercury", size: 0.03, distance: 0.4, rotationSpeed: 0.01, orbitSpeed: 0.02 },
-    { name: "Venus",   size: 0.06, distance: 0.7, rotationSpeed: 0.008, orbitSpeed: 0.015 },
-    { name: "Earth",   size: 0.07, distance: 1.0, rotationSpeed: 0.02, orbitSpeed: 0.01 },
-    { name: "Mars",    size: 0.05, distance: 1.3, rotationSpeed: 0.018, orbitSpeed: 0.008 }
-  ];
+  <div class="loader-logo">Smart<span>Vision</span> AI</div>
+  <div class="loader-sub">Industrial Visual Inspection System</div>
 
-  function init() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
-    document.body.appendChild(renderer.domElement);
+  <div class="loader-eye">
+    <div class="le-ring le-r1"></div>
+    <div class="le-ring le-r2"></div>
+    <div class="le-ring le-r3"></div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.8">
+      <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/>
+      <circle cx="12" cy="12" r="3" fill="rgba(0,212,255,0.15)"/>
+      <circle cx="12" cy="12" r="1.2" fill="#00d4ff"/>
+    </svg>
+  </div>
 
-    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+  <div class="loader-steps">
+    <div class="loader-step" id="ls-0"><div class="step-dot"></div><span class="step-text">Initializing SmartVision Core...</span></div>
+    <div class="loader-step" id="ls-1"><div class="step-dot"></div><span class="step-text">Loading YOLOv8 Detection Model...</span></div>
+    <div class="loader-step" id="ls-2"><div class="step-dot"></div><span class="step-text">Starting Background Removal Engine...</span></div>
+    <div class="loader-step" id="ls-3"><div class="step-dot"></div><span class="step-text">Connecting to Camera Feed...</span></div>
+    <div class="loader-step" id="ls-4"><div class="step-dot"></div><span class="step-text">Calibrating Inspection Pipeline...</span></div>
+    <div class="loader-step" id="ls-5"><div class="step-dot"></div><span class="step-text">System Ready</span></div>
+  </div>
 
-    const ringGeometry = new THREE.RingGeometry(0.1, 0.11, 32).rotateX(- Math.PI / 2);
-    const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    reticle = new THREE.Mesh(ringGeometry, ringMaterial);
-    reticle.matrixAutoUpdate = false;
-    reticle.visible = false;
-    scene.add(reticle);
+  <div class="loader-bar-wrap"><div class="loader-bar" id="loader-bar"></div></div>
+  <div class="loader-pct">LOADING <span id="loader-pct">0</span>%</div>
 
-    controller = renderer.xr.getController(0);
-    controller.addEventListener('select', onSelect);
-    scene.add(controller);
+  <div class="loader-ready" id="loader-ready">✓ SYSTEM ONLINE</div>
+</div>
 
-    // Add event listener for tap detection
-    renderer.domElement.addEventListener('click', onClick, false);
+<canvas id="particle-canvas"></canvas>
+<div class="grid-overlay"></div>
+<div class="scanlines"></div>
 
-    const light = new THREE.PointLight(0xffffff, 1, 10);
-    scene.add(light);
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">
+      <div class="icon-ring"></div><div class="icon-ring2"></div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.8">
+        <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/>
+        <circle cx="12" cy="12" r="3" fill="rgba(0,212,255,0.15)"/>
+        <circle cx="12" cy="12" r="1.2" fill="#00d4ff"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-name">Smart<span>Vision</span> AI</div>
+      <div class="brand-sub">Industrial Visual Inspection · v2.0 · Hackathon</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="sys-clock" id="sys-clock">--:--:--</div>
+    <div class="fps-chip">FPS <span id="fps-val">--</span></div>
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+  </div>
+</header>
 
-    renderer.setAnimationLoop(animate);
+<!-- ══ MODE A: SCAN VIEW ══ -->
+<div id="mode-scan">
+  <div class="left-col">
+    <div class="card" style="flex:1;">
+      <div class="card-header">
+        <div class="card-title"><div class="ctbar"></div>Live Camera — CAM_01</div>
+        <span id="session-label" style="font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--dim);">SESSION --</span>
+      </div>
+      <div class="feed-wrapper" id="feed-wrapper">
+        <img src="/video_feed" id="live-stream" alt="Live"/>
+        <div class="scan-line"></div>
+        <div class="detect-flash" id="detect-flash"></div>
+        <div class="feed-corner fc-tl"></div><div class="feed-corner fc-tr"></div>
+        <div class="feed-corner fc-bl"></div><div class="feed-corner fc-br"></div>
+        <div class="det-badge inactive" id="det-badge">○ NO PART DETECTED</div>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-chip">
+        <div class="stat-lbl">Scanned</div>
+        <div class="stat-val green" id="total-scanned">0</div>
+        <div class="stat-unit">parts total</div>
+      </div>
+      <div class="stat-chip">
+        <div class="stat-lbl">Passed</div>
+        <div class="stat-val green" id="total-pass">0</div>
+        <div class="stat-unit">approved</div>
+      </div>
+      <div class="stat-chip">
+        <div class="stat-lbl">Failed</div>
+        <div class="stat-val orange" id="total-fail">0</div>
+        <div class="stat-unit">rejected</div>
+      </div>
+    </div>
+  </div>
+  <div class="right-col">
+    <div class="card" style="flex:1;">
+      <div class="card-header">
+        <div class="card-title"><div class="ctbar"></div>Preview</div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:0.56rem;color:var(--dim);">BG REMOVED</span>
+      </div>
+      <div class="isolated-body">
+        <div class="iso-mini-wrap" id="iso-mini">
+          <div id="ph-mini" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div class="radar"><div class="radar-sweep"></div><div class="radar-dot"></div></div>
+            <div class="no-part-msg">Scanning...<br/><span style="font-size:0.56rem;">Place part in view</span></div>
+          </div>
+          <img id="iso-img-sm" src="" style="display:none;width:100%;height:100%;object-fit:contain;"/>
+        </div>
+      </div>
+    </div>
+    <div class="card info-card">
+      <div class="part-name-sm" id="part-name-sm">Scanning...</div>
+      <div class="part-tag" id="part-class-sm">-- AWAITING --</div>
+      <div class="info-row">
+        <span class="info-key">Status</span>
+        <span class="info-val" id="info-status" style="color:var(--dim)">WAITING</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Confidence</span>
+        <span class="info-val hi" id="info-conf">--</span>
+      </div>
+      <div class="conf-bar-wrap" style="margin-bottom:7px;">
+        <div class="conf-bar" id="conf-bar"></div>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Quality Score</span>
+        <span class="info-val hi" id="info-quality">--</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">Updated</span>
+        <span class="info-val" id="info-updated">--</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODE B: FULLSCREEN RESULT ══ -->
+<div id="mode-result">
+
+  <!-- Header: name + verdict -->
+  <div class="result-header">
+    <div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:0.58rem;color:var(--dim);letter-spacing:0.2em;margin-bottom:4px;">COMPONENT IDENTIFIED</div>
+      <div class="result-part-name" id="result-part-name">–</div>
+    </div>
+    <div class="verdict-stamp pending" id="verdict-stamp" style="display:none">PENDING</div>
+  </div>
+
+  <!-- Isolated image panel -->
+  <div class="result-img-panel">
+    <div class="panel-label"><div class="plbar blue"></div>Isolated Component (BG Removed)</div>
+    <div class="img-box" id="result-img-box">
+      <div class="img-ring r1"></div><div class="img-ring r2"></div>
+      <img id="result-img" src="" alt="Isolated"/>
+    </div>
+  </div>
+
+  <!-- Heatmap panel -->
+  <div class="result-heatmap-panel">
+    <div class="panel-label"><div class="plbar orange"></div>Defect Heatmap Analysis</div>
+    <div class="img-box" id="heatmap-box">
+      <div class="zone-badge" id="zone-badge">0 ZONES</div>
+      <img id="heatmap-img" src="" alt="Heatmap"/>
+      <div id="heatmap-placeholder" style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <div class="radar"><div class="radar-sweep"></div><div class="radar-dot"></div></div>
+        <div class="no-part-msg">Generating heatmap...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom row: gauge + spec card + history -->
+  <div class="result-bottom">
+
+    <!-- Quality Gauge -->
+    <div class="gauge-card">
+      <div class="gauge-title">Quality Score</div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 100 100">
+          <circle class="gauge-bg" cx="50" cy="50" r="45"/>
+          <circle class="gauge-fill" id="gauge-fill" cx="50" cy="50" r="45"/>
+        </svg>
+        <div class="gauge-center">
+          <div class="gauge-num" id="gauge-num">--</div>
+          <div class="gauge-sub">/ 100</div>
+        </div>
+      </div>
+      <div class="gauge-defects">Defect Zones: <span id="gauge-zones">--</span></div>
+    </div>
+
+    <!-- Spec Card -->
+    <div class="spec-card">
+      <div class="spec-title"><div class="plbar blue" style="height:10px;"></div>Part Specification</div>
+      <div class="spec-row"><span class="spec-key">Type</span><span class="spec-val" id="spec-type">--</span></div>
+      <div class="spec-row"><span class="spec-key">Material</span><span class="spec-val" id="spec-material">--</span></div>
+      <div class="spec-row"><span class="spec-key">Standard</span><span class="spec-val" id="spec-standard">--</span></div>
+      <div class="spec-row"><span class="spec-key">Use Case</span><span class="spec-val" id="spec-usecase">--</span></div>
+      <div class="spec-row"><span class="spec-key">Bbox Size</span><span class="spec-val" id="spec-bbox">--</span></div>
+      <div class="spec-row"><span class="spec-key">Confidence</span><span class="spec-val" id="spec-conf">--</span></div>
+    </div>
+
+    <!-- History Log -->
+    <div class="history-card" style="display:none">
+      <div class="history-header">
+        <div class="ctbar"></div>
+        Inspection Log
+        <span style="margin-left:auto;color:var(--accent);" id="hist-count">0 records</span>
+      </div>
+      <div class="history-body" id="history-body">
+        <div class="history-empty">No inspections yet</div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- end mode-result -->
+
+<!-- UPLOAD BUTTON -->
+<button class="upload-btn" id="upload-toggle" onclick="document.getElementById('upload-modal').classList.add('open')">⬆ Upload Image</button>
+
+<!-- UPLOAD MODAL -->
+<div class="upload-modal" id="upload-modal">
+  <div class="upload-box">
+    <button class="upload-close" onclick="closeUpload()">✕</button>
+    <h3>Image Inspection</h3>
+    <p>Upload a part image for AI analysis — heatmap, quality score & PDF report</p>
+
+    <select class="part-select" id="part-type-select">
+      <option value="gear">⚙️  Industrial Gear</option>
+      <option value="bearing">🔵  Ball Bearing</option>
+      <option value="engine_block">🔧  Engine Block Component</option>
+      <option value="brake_disc">🔴  Brake Disc</option>
+    </select>
+
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="handleDrop(event)">
+      <div id="dz-content">
+        <div class="drop-zone-icon">📁</div>
+        <div class="drop-zone-text">Click to upload or drag & drop<br/><span>PNG, JPG supported</span></div>
+      </div>
+      <img id="preview-img" src="" alt="preview"/>
+    </div>
+    <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFile(this.files[0])"/>
+
+    <button class="analyze-btn" id="analyze-btn" onclick="analyzeImage()" disabled>⚡ Analyze Part</button>
+    <div class="upload-status" id="upload-status"></div>
+  </div>
+</div>
+
+
+<!-- ACTION BAR -->
+<div class="action-bar" id="action-bar">
+  <button class="back-btn" id="back-btn" onclick="goBackToScan()">◀ Back to Scan</button>
+  <span class="action-hint">Scroll up to see full report</span>
+  <button class="export-btn" id="export-btn" onclick="exportReport()" style="display:none!important">⬇ Export PDF Report</button>
+</div>
+</div>
+
+<div class="footer">
+  SmartVision <span>AI</span> · YOLOv8 + rembg + OpenCV · Flask · Industrial Inspection · <span>Hackathon 2025</span>
+</div>
+
+<script>
+
+// ── LOADING SCREEN ────────────────────────────────────────────────────────
+(function(){
+  // Hide main content initially
+  document.getElementById('mode-scan').style.visibility='hidden';
+  document.getElementById('mode-result').style.visibility='hidden';
+
+  const steps   = [0,1,2,3,4,5];
+  const bar     = document.getElementById('loader-bar');
+  const pct     = document.getElementById('loader-pct');
+  const ready   = document.getElementById('loader-ready');
+  const loader  = document.getElementById('loader');
+
+  // Step timings in ms
+  const timings = [300, 900, 1800, 2600, 3400, 4000];
+  const pcts    = [10,  30,  55,   72,   88,   100 ];
+
+  function activateStep(i){
+    // Mark previous as done
+    if(i>0) {
+      document.getElementById('ls-'+(i-1)).classList.remove('active');
+      document.getElementById('ls-'+(i-1)).classList.add('done');
+    }
+    const el = document.getElementById('ls-'+i);
+    if(el) el.classList.add('active');
+    // Update bar
+    bar.style.width = pcts[i]+'%';
+    pct.textContent = pcts[i];
   }
 
-  function createSolarSystem(position) {
-    sun = null;
-    planets = [];
+  // Schedule each step
+  timings.forEach((t,i) => setTimeout(()=>activateStep(i), t));
 
-    const sunGeom = new THREE.SphereGeometry(0.15, 32, 32);
-    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-    sun = new THREE.Mesh(sunGeom, sunMat);
-    sun.position.copy(position);
-    scene.add(sun);
+  // After last step — show READY then dismiss
+  setTimeout(()=>{
+    // Mark last step done
+    document.getElementById('ls-5').classList.remove('active');
+    document.getElementById('ls-5').classList.add('done');
+    // Flash ready
+    ready.classList.add('show');
+    setTimeout(()=>{
+      // Hide loader
+      loader.classList.add('hiding');
+      // Show dashboard
+      document.getElementById('mode-scan').style.visibility='visible';
+      setTimeout(()=>{
+        loader.classList.add('hidden');
+        document.getElementById('mode-result').style.visibility='visible';
+      }, 800);
+    }, 900);
+  }, 4600);
+})();
 
-    planetData.forEach(data => {
-      const geom = new THREE.SphereGeometry(data.size, 32, 32);
-      const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
-      const planet = new THREE.Mesh(geom, mat);
-      planet.userData = {
-        name: data.name,
-        distance: data.distance,
-        rotationSpeed: data.rotationSpeed,
-        orbitSpeed: data.orbitSpeed,
-        angle: Math.random() * Math.PI * 2
-      };
-      scene.add(planet);
-      planets.push(planet);
+// ── PARTICLES ──────────────────────────────────────────────────────────────
+const canvas=document.getElementById('particle-canvas'),ctx=canvas.getContext('2d');
+let W,H,particles=[];
+function resize(){W=canvas.width=window.innerWidth;H=canvas.height=window.innerHeight;}
+resize();window.addEventListener('resize',resize);
+class P{constructor(){this.reset();}reset(){this.x=Math.random()*W;this.y=Math.random()*H;this.vx=(Math.random()-.5)*.3;this.vy=(Math.random()-.5)*.3;this.r=Math.random()*1.4+.3;this.life=Math.random();this.ml=Math.random()*.4+.1;this.c=Math.random()>.7?'168,85,247':'0,212,255';}update(){this.x+=this.vx;this.y+=this.vy;this.life+=.003;if(this.life>this.ml||this.x<0||this.x>W||this.y<0||this.y>H)this.reset();}draw(){const a=Math.sin(this.life/this.ml*Math.PI)*.4;ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fillStyle=`rgba(${this.c},${a})`;ctx.fill();}}
+for(let i=0;i<90;i++)particles.push(new P());
+function drawLines(){for(let i=0;i<particles.length;i++)for(let j=i+1;j<particles.length;j++){const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<100){ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.strokeStyle=`rgba(0,212,255,${.06*(1-d/100)})`;ctx.lineWidth=.5;ctx.stroke();}}}
+function anim(){ctx.clearRect(0,0,W,H);particles.forEach(p=>{p.update();p.draw();});drawLines();requestAnimationFrame(anim);}anim();
+
+// ── CLOCK ──────────────────────────────────────────────────────────────────
+function tick(){const n=new Date();document.getElementById('sys-clock').textContent=[n.getHours(),n.getMinutes(),n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');}
+setInterval(tick,1000);tick();
+
+// ── STREAM RECONNECT ───────────────────────────────────────────────────────
+const ls=document.getElementById('live-stream');
+ls.onerror=()=>setTimeout(()=>{ls.src='/video_feed?'+Date.now();},2000);
+
+// ── SMOOTH NUMBER ──────────────────────────────────────────────────────────
+function animNum(el,target,dur=400){const s=parseInt(el.textContent)||0;if(s===target)return;const r=target-s,t0=performance.now();const step=ts=>{const p=Math.min((ts-t0)/dur,1),e=1-Math.pow(1-p,3);el.textContent=Math.round(s+r*e);if(p<1)requestAnimationFrame(step);};requestAnimationFrame(step);}
+
+// ── GAUGE UPDATE ──────────────────────────────────────────────────────────
+function updateGauge(score){
+  const fill=document.getElementById('gauge-fill');
+  const num=document.getElementById('gauge-num');
+  const circumference=2*Math.PI*45;
+  const offset=circumference-(score/100)*circumference;
+  fill.style.strokeDashoffset=offset;
+  // Color: red < 60, yellow 60-80, green > 80
+  const color=score>=80?'#00ff88':score>=60?'#ffd700':'#ff3b5c';
+  fill.style.stroke=color;
+  num.style.color=color;
+  animNum(num,score,800);
+}
+
+// ── VERDICT STAMP ─────────────────────────────────────────────────────────
+function updateVerdict(verdict){
+  const stamp=document.getElementById('verdict-stamp');
+  stamp.textContent=verdict;
+  stamp.className='verdict-stamp '+(verdict==='PASS'?'pass':verdict==='FAIL'?'fail':'pending');
+}
+
+// ── RENDER HISTORY ─────────────────────────────────────────────────────────
+function renderHistory(history){
+  const body=document.getElementById('history-body');
+  document.getElementById('hist-count').textContent=history.length+' records';
+  if(!history.length){body.innerHTML='<div class="history-empty">No inspections yet</div>';return;}
+  body.innerHTML=history.map(h=>`
+    <div class="history-row">
+      <span class="h-time">${h.time}</span>
+      <span class="h-name" title="${h.name}">${h.name}</span>
+      <span class="h-conf">${h.conf}%</span>
+      <span class="h-quality" style="color:${h.quality>=80?'var(--green)':h.quality>=60?'var(--yellow)':'var(--red)'}">${h.quality}</span>
+      <span class="h-verdict ${h.verdict.toLowerCase()}">${h.verdict}</span>
+    </div>`).join('');
+}
+
+// ── MODE SWITCHING ─────────────────────────────────────────────────────────
+const modeScan=document.getElementById('mode-scan');
+const modeResult=document.getElementById('mode-result');
+let currentMode='scan', detectedFor=0, noDetectFor=0, manualMode=false;
+const THRESH_RESULT=1, THRESH_SCAN=99999; // switches on first detection
+
+function goBackToScan(){manualMode=false;showScan();}
+function showResult(data){
+  if(currentMode==='result')return;
+  currentMode='result';
+  // Populate all panels
+  document.getElementById('result-part-name').textContent=data.part_name;
+  document.getElementById('result-img').src='data:image/png;base64,'+data.isolated_b64;
+  document.getElementById('spec-type').textContent=data.part_type||'--';
+  document.getElementById('spec-material').textContent=data.part_material||'--';
+  document.getElementById('spec-standard').textContent=data.part_standard||'--';
+  document.getElementById('spec-usecase').textContent=data.part_usecase||'--';
+  document.getElementById('spec-bbox').textContent=`${data.bbox_w}×${data.bbox_h} px`;
+  document.getElementById('spec-conf').textContent=data.confidence+'%';
+  document.getElementById('gauge-zones').textContent=data.defect_zones||0;
+  document.getElementById('zone-badge').textContent=(data.defect_zones||0)+' ZONES';
+  updateGauge(data.quality_score||0);
+  updateVerdict(data.verdict||'PENDING');
+  if(data.heatmap_b64){
+    document.getElementById('heatmap-img').src='data:image/png;base64,'+data.heatmap_b64;
+    document.getElementById('heatmap-img').style.display='block';
+    document.getElementById('heatmap-placeholder').style.display='none';
+  }
+  modeScan.classList.add('hiding');
+  setTimeout(()=>{modeScan.style.display='none';manualMode=true;modeResult.classList.add('visible');document.getElementById('action-bar').classList.add('visible');document.getElementById('mode-result').scrollTop=0;},500);
+}
+
+function showScan(){
+  if(currentMode==='scan')return;
+  currentMode='scan';
+  manualMode=false;modeResult.classList.remove('visible');document.getElementById('action-bar').classList.remove('visible');
+  setTimeout(()=>{modeScan.style.display='grid';requestAnimationFrame(()=>modeScan.classList.remove('hiding'));},600);
+}
+
+// ── FLASH ──────────────────────────────────────────────────────────────────
+let wasDetected=false;
+const flashEl=document.getElementById('detect-flash');
+function flash(){flashEl.classList.add('flash');setTimeout(()=>flashEl.classList.remove('flash'),200);}
+
+// ── STATS POLL ─────────────────────────────────────────────────────────────
+let lastB64=null;
+
+async function fetchStats(){
+  try{
+    const data=await(await fetch('/stats')).json();
+    document.getElementById('fps-val').textContent=data.fps||'--';
+    document.getElementById('session-label').textContent='SESSION '+(data.session_start||'--');
+    animNum(document.getElementById('total-scanned'),data.total_scanned||0);
+    animNum(document.getElementById('total-pass'),data.total_pass||0);
+    animNum(document.getElementById('total-fail'),data.total_fail||0);
+    document.getElementById('part-name-sm').textContent=data.part_name||'Scanning...';
+    document.getElementById('part-class-sm').textContent=data.part_class||'-- AWAITING --';
+    document.getElementById('info-conf').textContent=data.detected?data.confidence+'%':'--';
+    document.getElementById('info-quality').textContent=data.detected?data.quality_score:'--';
+    document.getElementById('info-updated').textContent=data.last_updated||'--';
+    document.getElementById('conf-bar').style.width=data.detected?data.confidence+'%':'0%';
+    const badge=document.getElementById('det-badge'),status=document.getElementById('info-status');
+    if(data.detected){
+      if(!wasDetected)flash();
+      badge.textContent='● DETECTED — '+(data.part_class||'').toUpperCase();
+      badge.className='det-badge active';
+      status.textContent='DETECTED';status.style.color='var(--green)';
+    }else{
+      badge.textContent='○ NO PART DETECTED';badge.className='det-badge inactive';
+      status.textContent='SCANNING';status.style.color='var(--dim)';
+    }
+    wasDetected=data.detected;
+    if(data.isolated_b64&&data.isolated_b64!==lastB64){
+      lastB64=data.isolated_b64;
+      const sm=document.getElementById('iso-img-sm');
+      sm.src='data:image/png;base64,'+data.isolated_b64;sm.style.display='block';
+      document.getElementById('ph-mini').style.display='none';
+    }else if(!data.isolated_b64){
+      document.getElementById('iso-img-sm').style.display='none';
+      document.getElementById('ph-mini').style.display='flex';
+    }
+    // Always update history
+    renderHistory(data.history||[]);
+
+    // Mode switch
+    if(data.detected&&data.isolated_b64){
+      detectedFor++;noDetectFor=0;
+      if(detectedFor>=THRESH_RESULT)showResult(data);
+    }else{
+      noDetectFor++;detectedFor=0;
+      // Only auto-switch back if user has NOT manually stayed on result
+      if(!manualMode && noDetectFor>=THRESH_SCAN)showScan();
+    }
+  }catch(e){console.warn('Stats error:',e);}
+}
+setInterval(fetchStats,700);fetchStats();
+
+// ── MANUAL BACK ────────────────────────────────────────────────────────────
+function manualBack(){
+  detectedFor=0; noDetectFor=0;
+  showScan();
+}
+
+
+// ── IMAGE UPLOAD ──────────────────────────────────────────────────────────
+let uploadedFile = null;
+
+function closeUpload(){
+  document.getElementById('upload-modal').classList.remove('open');
+}
+
+function handleFile(file){
+  if(!file) return;
+  uploadedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('preview-img');
+    img.src = e.target.result;
+    img.style.display = 'block';
+    document.getElementById('dz-content').style.display = 'none';
+    document.getElementById('analyze-btn').disabled = false;
+    document.getElementById('upload-status').textContent = file.name + ' ready';
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if(file && file.type.startsWith('image/')) handleFile(file);
+}
+
+async function analyzeImage(){
+  if(!uploadedFile) return;
+  const btn = document.getElementById('analyze-btn');
+  const status = document.getElementById('upload-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Analyzing...';
+  status.textContent = 'Running AI analysis — please wait...';
+  status.style.color = 'var(--accent)';
+
+  try{
+    const formData = new FormData();
+    formData.append('image', uploadedFile);
+    formData.append('part_type', document.getElementById('part-type-select').value);
+
+    const res  = await fetch('/analyze_image', { method:'POST', body:formData });
+    const data = await res.json();
+
+    if(data.error){ status.textContent = 'Error: '+data.error; status.style.color='var(--red)'; return; }
+
+    // Close modal and show result screen with image analysis data
+    closeUpload();
+    status.textContent = '';
+
+    // Show result screen with the analyzed data
+    showResult({
+      part_name:    data.part_name,
+      part_class:   data.part_type,
+      part_type:    data.part_type,
+      part_material:data.part_material,
+      part_standard:data.part_standard,
+      part_usecase: data.part_usecase,
+      confidence:   data.confidence,
+      quality_score:data.quality_score,
+      verdict:      data.verdict,
+      defect_zones: data.defect_zones,
+      bbox_w:       data.bbox_w,
+      bbox_h:       data.bbox_h,
+      isolated_b64: data.isolated_b64,
+      heatmap_b64:  data.heatmap_b64,
     });
 
-    scene.children.forEach(obj => {
-      if (obj.isPointLight) obj.position.copy(position);
-    });
+  } catch(e){
+    status.textContent = 'Failed: ' + e.message;
+    status.style.color = 'var(--red)';
+  } finally{
+    btn.disabled = false;
+    btn.textContent = '⚡ Analyze Part';
   }
+}
 
-  function onSelect() {
-    if (reticle.visible && !placed) {
-      createSolarSystem(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));
-      placed = true;
-      reticle.visible = false;
-    }
+// ── EXPORT PDF ─────────────────────────────────────────────────────────────
+async function exportReport(){
+  const btn=document.getElementById('export-btn');
+  btn.textContent='⏳ Generating...';
+  btn.classList.add('exporting');
+  try{
+    const res=await fetch('/export_report');
+    if(!res.ok){alert('Error generating report: '+await res.text());return;}
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const cd=res.headers.get('Content-Disposition')||'';
+    const match=cd.match(/filename="?([^"]+)"?/);
+    a.download=match?match[1]:'SmartVision_Report.pdf';
+    a.href=url;a.click();
+    URL.revokeObjectURL(url);
+    btn.textContent='✅ Downloaded!';
+    setTimeout(()=>{btn.textContent='⬇ Export PDF Report';btn.classList.remove('exporting');},2500);
+  }catch(e){
+    alert('Failed: '+e.message);
+    btn.textContent='⬇ Export PDF Report';
+    btn.classList.remove('exporting');
   }
-
-  function onClick(event) {
-    tapPosition.x = (event.clientX / window.innerWidth) * 2 - 1;
-    tapPosition.y = - (event.clientY / window.innerHeight) * 2 + 1;
-
-    raycaster.setFromCamera(tapPosition, camera);
-
-    const intersects = raycaster.intersectObjects(planets);
-
-    if (intersects.length > 0) {
-      const planet = intersects[0].object;
-      alert('You clicked on ' + planet.userData.name);
-    }
-  }
-
-  function animate(timestamp, frame) {
-    if (frame) {
-      const referenceSpace = renderer.xr.getReferenceSpace();
-      const session = renderer.xr.getSession();
-
-      if (!hitTestSourceRequested) {
-        session.requestReferenceSpace('viewer').then((referenceSpace) => {
-          session.requestHitTestSource({ space: referenceSpace }).then((source) => {
-            hitTestSource = source;
-          });
-        });
-
-        session.addEventListener('end', () => {
-          hitTestSourceRequested = false;
-          hitTestSource = null;
-        });
-
-        hitTestSourceRequested = true;
-      }
-
-      if (hitTestSource) {
-        const hitTestResults = frame.getHitTestResults(hitTestSource);
-        if (hitTestResults.length > 0 && !placed) {
-          const hit = hitTestResults[0];
-          const pose = hit.getPose(referenceSpace);
-          reticle.visible = true;
-          reticle.matrix.fromArray(pose.transform.matrix);
-        } else {
-          reticle.visible = false;
-        }
-      }
-    }
-
-    if (placed && sun) {
-      sun.rotation.y += 0.01;
-      planets.forEach(planet => {
-        planet.rotation.y += planet.userData.rotationSpeed;
-        planet.userData.angle += planet.userData.orbitSpeed;
-        planet.position.set(
-          sun.position.x + Math.cos(planet.userData.angle) * planet.userData.distance,
-          sun.position.y,
-          sun.position.z + Math.sin(planet.userData.angle) * planet.userData.distance
-        );
-      });
-    }
-
-    renderer.render(scene, camera);
-  }
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-
-  init();
+}
 </script>
 </body>
 </html>
-
